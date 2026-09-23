@@ -1,0 +1,11 @@
+.build/
+dist/
+docs/promotions/
+.DS_Store
+.tools/
+windows/**/bin/
+windows/**/obj/
+inbox.json
+.vs/
+*.user
+*.suo

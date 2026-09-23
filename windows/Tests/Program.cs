@@ -1,0 +1,70 @@
+using QuietPin;
+
+static void Check(bool condition, string label) { if (!condition) throw new Exception(label); }
+var book = new Notebook();
+Check(book.Add(" \n") == null, "empty input");
+var a = book.Add("  写论文  ")!.Value;
+var b = book.Add("回复导师")!.Value;
+var c = book.Add("健身")!.Value;
+var d = book.Add("第四件事")!.Value;
+Check(book.Items[0].Content == "写论文", "trim input");
+foreach (var id in new[] { a, b, c }) Check(book.Pin(id), "first 3 pins");
+Check(!book.Pin(d), "pin limit");
+Check(book.Pin(d, b), "replace");
+Check(book.Pins.Select(i => i.Id).SequenceEqual(new[] { a, d, c }), "replacement position");
+Check(book.Items.Any(i => i.Id == b && !i.Pinned), "keep original");
+book.Move(c, a);
+Check(book.Pins.Select(i => i.Id).SequenceEqual(new[] { c, a, d }), "reorder");
+book.Complete(a);
+Check(book.Pins.Length == 2 && !book.Pin(a), "completion releases pin");
+book.Complete(a);
+Check(book.Pins.Length == 2, "restore does not auto pin");
+book.Unpin(c); book.Pin(b); book.Delete(d);
+Check(book.Pins.Select(i => i.Id).SequenceEqual(new[] { b }), "delete and normalize");
+var directory = Path.Combine(Path.GetTempPath(), "quietpin-test-" + Guid.NewGuid());
+var store = new Store(directory);
+store.Edit(n => {
+    n.Items = book.Items; n.Preferences.Background = "#FF112233"; n.Preferences.Collapsed = true;
+    n.Preferences.StripMode = true; n.Preferences.DockEdge = "right";
+    n.Preferences.CustomKey = 0x4B; n.Preferences.CustomModifiers = 3;
+    n.Preferences.ControlEnterToSave = true;
+    n.Preferences.CaptureOpacity = .55;
+    n.Preferences.SavedColors.Add("#80112233");
+});
+var restored = new Store(directory);
+Check(restored.Book.Items.Count == 3 && restored.Book.Pins.Length == 1 && restored.Book.Preferences.Background == "#FF112233" && restored.Book.Preferences.Collapsed, "restart persistence");
+Check(restored.Book.Preferences.StripMode && restored.Book.Preferences.DockEdge == "right" && restored.Book.Preferences.CustomKey == 0x4B && restored.Book.Preferences.CustomModifiers == 3 && restored.Book.Preferences.ControlEnterToSave, "window and shortcut preferences persist");
+Check(restored.Book.Preferences.CaptureOpacity == .55, "capture opacity persists independently");
+var clearDirectory = Path.Combine(Path.GetTempPath(), "quietpin-clear-test-" + Guid.NewGuid());
+var clearStore = new Store(clearDirectory);
+Check(!clearStore.Book.Preferences.SkipClearCompletedConfirmation, "default clear confirmation enabled");
+clearStore.Edit(n => {
+    var pin = n.Add("keep pinned")!.Value; n.Pin(pin);
+    n.Add("keep inbox");
+    var done = n.Add("done")!.Value; n.Complete(done);
+});
+var keepIds = clearStore.Book.Items.Where(i => !i.Completed).Select(i => i.Id).ToArray();
+clearStore.Edit(n => n.ClearCompleted());
+Check(clearStore.Book.Items.Select(i => i.Id).SequenceEqual(keepIds) && clearStore.Book.Pins.Length == 1, "clear only completed, keep order/pins");
+Check(new Store(clearDirectory).Book.Items.Select(i => i.Id).SequenceEqual(keepIds), "cleared records stay removed after reload");
+Check(!new Store(clearDirectory).Book.Preferences.SkipClearCompletedConfirmation, "ordinary clear still asks next time");
+clearStore.Edit(n => n.ClearCompleted());
+Check(clearStore.Book.Items.Count == 2, "clear when none done is a no-op");
+clearStore.Edit(n => { foreach (var id in n.Items.Select(i => i.Id).ToArray()) n.Complete(id); n.ClearCompleted(true); });
+Check(clearStore.Book.Items.Count == 0, "clear all completed");
+Check(new Store(clearDirectory).Book.Preferences.SkipClearCompletedConfirmation, "opt-out persists on restart");
+clearStore.Edit(n => n.ClearCompleted());
+Check(clearStore.Book.Items.Count == 0, "clear empty notebook");
+Check(new Store(clearDirectory).Book.Preferences.SkipClearCompletedConfirmation, "subsequent clears preserve opt-out");
+Check(restored.Book.Preferences.SavedColors.SequenceEqual(new[] { "#80112233" }), "saved palette preserves alpha and persists");
+restored.Edit(n => n.Preferences.SavedColors.Remove("#80112233"));
+Check(new Store(directory).Book.Preferences.SavedColors.Count == 0 && restored.Book.Preferences.Background == "#FF112233", "palette deletion persists without changing background");
+try { restored.Edit(n => throw new Exception("injected failure")); } catch { }
+Check(new Store(directory).Book.Items.Count == 3, "transaction rollback");
+File.WriteAllText(Path.Combine(directory, "inbox.json"), "invalid json");
+var corrupt = new Store(directory);
+Check(corrupt.LoadError != null, "report corruption");
+try { corrupt.Edit(n => n.Add("must not overwrite")); throw new Exception("wrote to corrupt data"); }
+catch (IOException) { }
+Check(File.ReadAllText(Path.Combine(directory, "inbox.json")) == "invalid json", "preserve corrupt original");
+Console.WriteLine("PASS: Windows model — input, pin limit/replacement/reorder, complete/restore, delete, persistence, transaction rollback, corruption protection");

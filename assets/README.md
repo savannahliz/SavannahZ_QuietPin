@@ -1,0 +1,1 @@
+GitHub Invertocat images are from the [official GitHub Brand Toolkit](https://brand.github.com/foundations/logo). GitHub's trademarks remain the property of GitHub, Inc. The images are used only as a link to this project's GitHub repository.
