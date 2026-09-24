@@ -579,8 +579,8 @@ internal sealed class MainWindow : Window
 internal sealed class CaptureWindow : Window
 {
     private readonly App app;
-    private readonly DockPanel captureRoot = new() { Background = Brushes.Transparent, RenderTransformOrigin = new Point(.5, .5) };
-    private readonly ScaleTransform captureScale = new(1, 1);
+    private readonly DockPanel captureRoot = new() { Background = Brushes.Transparent };
+    private readonly TranslateTransform captureOffset = new(0, 0);
     private readonly ScaleTransform cancelScale = new(.72, .72);
     private readonly TextBox input = new() { FontSize = 20, BorderThickness = new Thickness(0), Padding = new Thickness(5), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
     private readonly Border surface = new() { CornerRadius = new CornerRadius(32), Padding = new Thickness(22, 8, 22, 8), BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
@@ -619,7 +619,7 @@ internal sealed class CaptureWindow : Window
         cancelSurface.IsHitTestVisible = false;
         cancelSurface.RenderTransformOrigin = new Point(.5, .5);
         cancelSurface.RenderTransform = cancelScale;
-        captureRoot.RenderTransform = captureScale;
+        captureRoot.RenderTransform = captureOffset;
         DockPanel.SetDock(cancelSurface, Dock.Right); captureRoot.Children.Add(cancelSurface); captureRoot.Children.Add(surface); Content = captureRoot;
         captureRoot.MouseEnter += (_, _) => AnimateCancel(true);
         captureRoot.MouseLeave += (_, _) => AnimateCancel(false);
@@ -658,33 +658,30 @@ internal sealed class CaptureWindow : Window
     internal void PrepareEntrance()
     {
         captureRoot.BeginAnimation(OpacityProperty, null);
-        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        captureOffset.BeginAnimation(TranslateTransform.YProperty, null);
         captureRoot.Opacity = SystemParameters.ClientAreaAnimation ? 0 : 1;
-        captureScale.ScaleX = SystemParameters.ClientAreaAnimation ? .68 : 1;
-        captureScale.ScaleY = SystemParameters.ClientAreaAnimation ? .90 : 1;
+        captureOffset.Y = SystemParameters.ClientAreaAnimation ? 6 : 0;
         AnimateCancel(false);
     }
     internal void AnimateIn()
     {
         if (!SystemParameters.ClientAreaAnimation) return;
-        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(110)) {
+        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(80)) {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
-        var spring = new BackEase { Amplitude = .48, EasingMode = EasingMode.EaseOut };
-        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.68, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = spring });
-        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.90, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = spring });
+        captureOffset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(6, 0, TimeSpan.FromMilliseconds(200)) {
+            EasingFunction = new BackEase { Amplitude = .16, EasingMode = EasingMode.EaseOut }
+        });
     }
     internal void AnimateOut(Action completed)
     {
         if (!SystemParameters.ClientAreaAnimation) { completed(); return; }
-        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)) {
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(70)) {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
         fade.Completed += (_, _) => completed();
         captureRoot.BeginAnimation(OpacityProperty, fade);
-        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.98, TimeSpan.FromMilliseconds(120)));
-        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.98, TimeSpan.FromMilliseconds(120)));
+        captureOffset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-2, TimeSpan.FromMilliseconds(70)));
     }
     private void AnimateCancel(bool visible)
     {
