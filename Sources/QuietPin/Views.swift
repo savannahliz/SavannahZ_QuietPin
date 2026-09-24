@@ -364,7 +364,7 @@ struct QuickCaptureView: View {
         presented = false
         hovering = false
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) { presented = true }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { presented = true }
         }
     }
 

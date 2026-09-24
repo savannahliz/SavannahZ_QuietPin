@@ -314,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         capturePanel.alphaValue = motionEnabled ? 0 : targetOpacity
         capturePanel.makeKeyAndOrderFront(nil)
         if let captureInput { capturePanel.makeFirstResponder(captureInput) }
-        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.18, easeOut: true) {} }
+        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.11, easeOut: true) {} }
         captureLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self, self.capturePanel.isVisible else { return event }
             if event.type == .keyDown {
@@ -679,7 +679,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.revealFromEdge()
             let movingIn = !self.dockHidden && self.edgeTransitioning && self.mainPanel.isVisible &&
                 self.mainPanel.frame.size == frame.size
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.60) {
                 let revealed = !self.dockHidden && !self.edgeTransitioning && self.mainPanel.isVisible &&
                     !self.edgePanel.isVisible && self.mainPanel.frame == frame
                 self.toggleCapture()

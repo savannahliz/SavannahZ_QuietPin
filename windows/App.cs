@@ -668,12 +668,12 @@ internal sealed class CaptureWindow : Window
     internal void AnimateIn()
     {
         if (!SystemParameters.ClientAreaAnimation) return;
-        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) {
+        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(110)) {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
         var spring = new BackEase { Amplitude = .48, EasingMode = EasingMode.EaseOut };
-        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.68, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = spring });
-        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.90, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = spring });
+        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.68, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = spring });
+        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.90, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = spring });
     }
     internal void AnimateOut(Action completed)
     {
