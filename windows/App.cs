@@ -660,7 +660,7 @@ internal sealed class CaptureWindow : Window
         captureRoot.BeginAnimation(OpacityProperty, null);
         captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        captureRoot.Opacity = SystemParameters.ClientAreaAnimation ? .35 : 1;
+        captureRoot.Opacity = SystemParameters.ClientAreaAnimation ? .60 : 1;
         captureScale.ScaleX = SystemParameters.ClientAreaAnimation ? .84 : 1;
         captureScale.ScaleY = SystemParameters.ClientAreaAnimation ? .96 : 1;
         AnimateCancel(false);
@@ -668,12 +668,12 @@ internal sealed class CaptureWindow : Window
     internal void AnimateIn()
     {
         if (!SystemParameters.ClientAreaAnimation) return;
-        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(.35, 1, TimeSpan.FromMilliseconds(160)) {
+        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(.60, 1, TimeSpan.FromMilliseconds(120)) {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
         var spring = new BackEase { Amplitude = .20, EasingMode = EasingMode.EaseOut };
-        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.84, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = spring });
-        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.96, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = spring });
+        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.84, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = spring });
+        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.96, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = spring });
     }
     internal void AnimateOut(Action completed)
     {
