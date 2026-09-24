@@ -661,7 +661,8 @@ internal sealed class CaptureWindow : Window
         captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         captureRoot.Opacity = SystemParameters.ClientAreaAnimation ? 0 : 1;
-        captureScale.ScaleX = captureScale.ScaleY = SystemParameters.ClientAreaAnimation ? .95 : 1;
+        captureScale.ScaleX = SystemParameters.ClientAreaAnimation ? .68 : 1;
+        captureScale.ScaleY = SystemParameters.ClientAreaAnimation ? .90 : 1;
         AnimateCancel(false);
     }
     internal void AnimateIn()
@@ -670,9 +671,9 @@ internal sealed class CaptureWindow : Window
         captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
-        var spring = new BackEase { Amplitude = .24, EasingMode = EasingMode.EaseOut };
-        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.95, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = spring });
-        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.95, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = spring });
+        var spring = new BackEase { Amplitude = .48, EasingMode = EasingMode.EaseOut };
+        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.68, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = spring });
+        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.90, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = spring });
     }
     internal void AnimateOut(Action completed)
     {
@@ -697,9 +698,9 @@ internal sealed class CaptureWindow : Window
         cancelSurface.BeginAnimation(OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(160)) {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         });
-        var spring = new BackEase { Amplitude = .35, EasingMode = EasingMode.EaseOut };
-        cancelScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(220)) { EasingFunction = spring });
-        cancelScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(220)) { EasingFunction = spring });
+        var spring = new BackEase { Amplitude = .48, EasingMode = EasingMode.EaseOut };
+        cancelScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(250)) { EasingFunction = spring });
+        cancelScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(250)) { EasingFunction = spring });
     }
     internal void FocusInput() => Dispatcher.BeginInvoke(new Action(() => { if (IsVisible) input.Focus(); }), DispatcherPriority.Input);
     private void Save()
