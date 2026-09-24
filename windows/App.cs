@@ -41,6 +41,7 @@ public sealed class App : Application
     private SettingsWindow? settings;
     private IntPtr previousWindow;
     private bool closingCapture;
+    private bool reopenCapture;
     internal string? ShortcutError;
     internal bool Quitting;
     internal static readonly string[] ShortcutLabels = { "Ctrl + Alt + Space", "Ctrl + Shift + Space", "Alt + Shift + Space" };
@@ -94,7 +95,7 @@ public sealed class App : Application
         try { Store.Edit(action); if (render) { Inbox.Render(); capture?.ApplyAppearance(); settings?.UpdatePreviews(); } return true; }
         catch (Exception ex) { MessageBox.Show("未能保存，原记录未被覆盖。\n" + ex.Message, "QuietPin"); return false; }
     }
-    internal void ShowInbox() { Inbox.Show(); Inbox.Expand(); Inbox.Activate(); }
+    internal void ShowInbox() { Inbox.Expand(); Inbox.Show(); Inbox.Activate(); }
     internal void ShowSettings()
     {
         if (settings == null) { settings = new SettingsWindow(this); settings.Closed += (_, _) => settings = null; }
@@ -103,19 +104,24 @@ public sealed class App : Application
     }
     internal void ToggleCapture()
     {
+        if (closingCapture) { reopenCapture = true; return; }
         if (capture?.IsVisible == true) { CloseCapture(); return; }
         previousWindow = Native.GetForegroundWindow();
         capture ??= new CaptureWindow(this);
-        capture.PositionAtCursor(); capture.Show(); capture.Activate(); capture.FocusInput();
+        capture.PositionAtCursor(); capture.PrepareEntrance(); capture.Show(); capture.Activate(); capture.FocusInput(); capture.AnimateIn();
     }
     internal void CloseCapture(bool restoreFocus = true)
     {
         if (closingCapture || capture?.IsVisible != true) return;
         closingCapture = true;
-        capture?.Hide();
-        if (restoreFocus && previousWindow != IntPtr.Zero) Native.SetForegroundWindow(previousWindow);
-        previousWindow = IntPtr.Zero;
-        closingCapture = false;
+        capture.AnimateOut(() =>
+        {
+            capture.Hide();
+            if (restoreFocus && previousWindow != IntPtr.Zero) Native.SetForegroundWindow(previousWindow);
+            previousWindow = IntPtr.Zero;
+            closingCapture = false;
+            if (reopenCapture) { reopenCapture = false; ToggleCapture(); }
+        });
     }
     internal void RegisterShortcut()
     {
@@ -218,6 +224,8 @@ internal sealed class MainWindow : Window
     };
     private Rect? dockFrame;
     private bool dockHidden;
+    private bool edgeTransitioning;
+    private int edgeMotionToken;
     private bool userDragging;
 
     internal MainWindow(App app)
@@ -242,7 +250,7 @@ internal sealed class MainWindow : Window
         Loaded += (_, _) =>
         {
             ClampToScreen();
-            if (p.DockEdge != null) { dockFrame = new Rect(Left, Top, Width, Height); HideAtEdge(); }
+            if (p.DockEdge != null) { dockFrame = new Rect(Left, Top, Width, Height); HideAtEdge(false); }
             edgeTimer.Start();
         };
         edgeTimer.Tick += (_, _) => PollEdge();
@@ -407,7 +415,7 @@ internal sealed class MainWindow : Window
         var p = app.Store.Book.Preferences;
         ChangeMode(!p.StripMode, p.Collapsed && !p.StripMode);
     }
-    internal void Expand() { RevealFromEdge(); ChangeMode(false, false); }
+    internal void Expand() { RevealFromEdge(false); ChangeMode(false, false); }
     private void SetSizeLimits()
     {
         var p = app.Store.Book.Preferences;
@@ -419,7 +427,7 @@ internal sealed class MainWindow : Window
     }
     internal void ChangeMode(bool collapsed, bool strip)
     {
-        RevealFromEdge(); frameTimer.Stop(); SaveFrame(); resizingMode = true;
+        RevealFromEdge(false); frameTimer.Stop(); SaveFrame(); resizingMode = true;
         app.Commit(b => { b.Preferences.Collapsed = collapsed; b.Preferences.StripMode = strip; }, false);
         var p = app.Store.Book.Preferences;
         SetSizeLimits();
@@ -487,6 +495,7 @@ internal sealed class MainWindow : Window
     }
     private void PollEdge()
     {
+        if (edgeTransitioning) return;
         var pressing = Native.GetAsyncKeyState(0x01) < 0;
         if (userDragging && !pressing)
         {
@@ -515,25 +524,54 @@ internal sealed class MainWindow : Window
             HideAtEdge();
         }
     }
-    private void HideAtEdge()
+    private void HideAtEdge(bool animated = true)
     {
         if (dockHidden || !dockFrame.HasValue) return;
         var rest = dockFrame.Value; var work = WorkArea();
         resizingMode = true; frameTimer.Stop(); dockFrame = new Rect(Left, Top, Width, Height); dockHidden = true;
+        edgeTransitioning = true; var token = ++edgeMotionToken;
         // Swap windows instead of resizing the live transparent content to 8px.
         edgeHandle.Height = Math.Min(100, rest.Height);
         edgeHandle.Left = app.Store.Book.Preferences.DockEdge == "left" ? work.Left : work.Right - 8;
         edgeHandle.Top = rest.Top + (rest.Height - edgeHandle.Height) / 2;
-        Hide(); edgeHandle.Show();
-        resizingMode = false; Fade();
+        void Finish()
+        {
+            if (token != edgeMotionToken || !dockHidden) return;
+            BeginAnimation(LeftProperty, null);
+            Hide(); Left = rest.Left; edgeHandle.Show();
+            edgeTransitioning = false; resizingMode = false; Fade();
+        }
+        if (!animated || !SystemParameters.ClientAreaAnimation) { Finish(); return; }
+        var parked = app.Store.Book.Preferences.DockEdge == "left" ? work.Left - Width + 8 : work.Right - 8;
+        var slide = new DoubleAnimation(Left, parked, TimeSpan.FromMilliseconds(190)) {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        slide.Completed += (_, _) => Finish();
+        BeginAnimation(LeftProperty, slide);
     }
-    private void RevealFromEdge()
+    private void RevealFromEdge(bool animated = true)
     {
         if (!dockHidden || !dockFrame.HasValue) return;
-        var rest = dockFrame.Value; resizingMode = true; dockHidden = false;
-        Left = rest.Left; Top = rest.Top; Width = rest.Width; Height = rest.Height;
+        var rest = dockFrame.Value; var work = WorkArea();
+        resizingMode = true; dockHidden = false; edgeTransitioning = true;
+        var token = ++edgeMotionToken;
+        BeginAnimation(LeftProperty, null);
+        var parked = app.Store.Book.Preferences.DockEdge == "left" ? work.Left - rest.Width + 8 : work.Right - 8;
+        Left = animated && SystemParameters.ClientAreaAnimation ? parked : rest.Left;
+        Top = rest.Top; Width = rest.Width; Height = rest.Height;
         UpdateLayout(); Show(); edgeHandle.Hide();
-        resizingMode = false; Fade();
+        void Finish()
+        {
+            if (token != edgeMotionToken || dockHidden) return;
+            BeginAnimation(LeftProperty, null);
+            Left = rest.Left; edgeTransitioning = false; resizingMode = false; Fade();
+        }
+        if (!animated || !SystemParameters.ClientAreaAnimation) { Finish(); return; }
+        var slide = new DoubleAnimation(parked, rest.Left, TimeSpan.FromMilliseconds(280)) {
+            EasingFunction = new BackEase { Amplitude = .24, EasingMode = EasingMode.EaseOut }
+        };
+        slide.Completed += (_, _) => Finish();
+        BeginAnimation(LeftProperty, slide);
     }
     internal void HideToTray() { Hide(); edgeHandle.Hide(); }
 }
@@ -541,6 +579,9 @@ internal sealed class MainWindow : Window
 internal sealed class CaptureWindow : Window
 {
     private readonly App app;
+    private readonly DockPanel captureRoot = new() { Background = Brushes.Transparent, RenderTransformOrigin = new Point(.5, .5) };
+    private readonly ScaleTransform captureScale = new(1, 1);
+    private readonly ScaleTransform cancelScale = new(.72, .72);
     private readonly TextBox input = new() { FontSize = 20, BorderThickness = new Thickness(0), Padding = new Thickness(5), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
     private readonly Border surface = new() { CornerRadius = new CornerRadius(32), Padding = new Thickness(22, 8, 22, 8), BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
     private readonly Border cancelSurface = new() { CornerRadius = new CornerRadius(32), Width = 64, Height = 64, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1), Margin = new Thickness(12, 0, 0, 0) };
@@ -574,7 +615,14 @@ internal sealed class CaptureWindow : Window
         cancel.Click += (_, _) => app.CloseCapture();
         System.Windows.Automation.AutomationProperties.SetName(cancel, "取消输入");
         cancelSurface.Child = cancel;
-        var root = new DockPanel(); DockPanel.SetDock(cancelSurface, Dock.Right); root.Children.Add(cancelSurface); root.Children.Add(surface); Content = root;
+        cancelSurface.Opacity = 0;
+        cancelSurface.IsHitTestVisible = false;
+        cancelSurface.RenderTransformOrigin = new Point(.5, .5);
+        cancelSurface.RenderTransform = cancelScale;
+        captureRoot.RenderTransform = captureScale;
+        DockPanel.SetDock(cancelSurface, Dock.Right); captureRoot.Children.Add(cancelSurface); captureRoot.Children.Add(surface); Content = captureRoot;
+        captureRoot.MouseEnter += (_, _) => AnimateCancel(true);
+        captureRoot.MouseLeave += (_, _) => AnimateCancel(false);
         input.ToolTip = "记下此刻的想法…";
         input.KeyDown += (_, e) =>
         {
@@ -606,6 +654,52 @@ internal sealed class CaptureWindow : Window
         Foreground = color.R * .2126 + color.G * .7152 + color.B * .0722 < 115 ? Brushes.WhiteSmoke : Brushes.Black;
         input.Foreground = Foreground;
         Opacity = Math.Clamp(app.Store.Book.Preferences.CaptureOpacity, .15, 1);
+    }
+    internal void PrepareEntrance()
+    {
+        captureRoot.BeginAnimation(OpacityProperty, null);
+        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        captureRoot.Opacity = SystemParameters.ClientAreaAnimation ? 0 : 1;
+        captureScale.ScaleX = captureScale.ScaleY = SystemParameters.ClientAreaAnimation ? .95 : 1;
+        AnimateCancel(false);
+    }
+    internal void AnimateIn()
+    {
+        if (!SystemParameters.ClientAreaAnimation) return;
+        captureRoot.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        var spring = new BackEase { Amplitude = .24, EasingMode = EasingMode.EaseOut };
+        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.95, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = spring });
+        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.95, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = spring });
+    }
+    internal void AnimateOut(Action completed)
+    {
+        if (!SystemParameters.ClientAreaAnimation) { completed(); return; }
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)) {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+        };
+        fade.Completed += (_, _) => completed();
+        captureRoot.BeginAnimation(OpacityProperty, fade);
+        captureScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(.98, TimeSpan.FromMilliseconds(120)));
+        captureScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(.98, TimeSpan.FromMilliseconds(120)));
+    }
+    private void AnimateCancel(bool visible)
+    {
+        cancelSurface.IsHitTestVisible = visible;
+        var opacity = visible ? 1.0 : 0.0;
+        var scale = visible ? 1.0 : .72;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            cancelSurface.Opacity = opacity; cancelScale.ScaleX = cancelScale.ScaleY = scale; return;
+        }
+        cancelSurface.BeginAnimation(OpacityProperty, new DoubleAnimation(opacity, TimeSpan.FromMilliseconds(160)) {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        });
+        var spring = new BackEase { Amplitude = .35, EasingMode = EasingMode.EaseOut };
+        cancelScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(220)) { EasingFunction = spring });
+        cancelScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(scale, TimeSpan.FromMilliseconds(220)) { EasingFunction = spring });
     }
     internal void FocusInput() => Dispatcher.BeginInvoke(new Action(() => { if (IsVisible) input.Focus(); }), DispatcherPriority.Input);
     private void Save()

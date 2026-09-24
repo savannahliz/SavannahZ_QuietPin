@@ -36,19 +36,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var saveFrameWork: DispatchWorkItem?
     private var dockFrame: NSRect?
     private var dockHidden = false
+    private var edgeTransitioning = false
+    private var edgeMotionToken = 0
+    private var edgeMotionTimer: Timer?
     private var dockTimer: Timer?
     private var userDragging = false
     private weak var captureInput: NSTextField?
     private var captureLocalMonitor: Any?
     private var captureGlobalMonitor: Any?
     private var closingCapture = false
+    private var reopenCapture = false
+    private var captureMotionTimer: Timer?
+    private var motionEnabled: Bool {
+        !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion &&
+        !CommandLine.arguments.contains("--smoke-test") &&
+        !CommandLine.arguments.contains("--edge-regression-test")
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let smoke = CommandLine.arguments.contains("--smoke-test")
         let captureRegression = CommandLine.arguments.contains("--capture-regression-test")
         let edgeRegression = CommandLine.arguments.contains("--edge-regression-test")
+        let motionRegression = CommandLine.arguments.contains("--motion-regression-test")
         let uiTest = CommandLine.arguments.contains("--ui-test")
-        if smoke || uiTest || captureRegression || edgeRegression {
+        if smoke || uiTest || captureRegression || edgeRegression || motionRegression {
             let suite = uiTest ? "QuietPin.UITest" : "QuietPin.Smoke.\(UUID().uuidString)"
             store = Store(directory: FileManager.default.temporaryDirectory.appendingPathComponent(suite),
                           defaults: UserDefaults(suiteName: suite)!)
@@ -77,13 +88,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }.store(in: &subscriptions)
         applyPreferences()
         mainPanel.orderFrontRegardless()
-        if store.preferences.dockEdge != nil { dockFrame = mainPanel.frame; hideAtEdge() }
+        if store.preferences.dockEdge != nil { dockFrame = mainPanel.frame; hideAtEdge(animated: false) }
         dockTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pollEdge() }
         }
         if smoke { DispatchQueue.main.async { self.runSmokeTest() } }
         if captureRegression { DispatchQueue.main.async { self.runCaptureRegression() } }
         if edgeRegression { DispatchQueue.main.async { self.runEdgeRegression() } }
+        if motionRegression { DispatchQueue.main.async { self.runMotionRegression() } }
     }
 
     private func makePanel(rect: NSRect) -> FloatingPanel {
@@ -222,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func showInbox() {
-        revealFromEdge()
+        revealFromEdge(animated: false)
         if store.preferences.collapsed { changeMode(collapsed: false, strip: false) }
         mainPanel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -266,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func changeMode(collapsed: Bool, strip: Bool) {
-        revealFromEdge()
+        revealFromEdge(animated: false)
         saveFrameWork?.cancel()
         rememberFrame()
         changingMode = true
@@ -283,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func toggleCapture() {
+        if closingCapture { reopenCapture = true; return }
         if capturePanel.isVisible { closeCapture(); return }
         store.captureSession = UUID()
         let point = NSEvent.mouseLocation
@@ -297,8 +310,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         capturePanel.contentView?.displayIfNeeded()
         // This nonactivating panel borrows keyboard focus; activating the app
         // as well causes a visible foreground/Space transition before capture.
+        let targetOpacity = min(1, max(0.15, store.preferences.captureOpacity ?? 0.95))
+        capturePanel.alphaValue = motionEnabled ? 0 : targetOpacity
         capturePanel.makeKeyAndOrderFront(nil)
         if let captureInput { capturePanel.makeFirstResponder(captureInput) }
+        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.18, easeOut: true) {} }
         captureLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self, self.capturePanel.isVisible else { return event }
             if event.type == .keyDown {
@@ -318,8 +334,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         closingCapture = true
         if let captureLocalMonitor { NSEvent.removeMonitor(captureLocalMonitor); self.captureLocalMonitor = nil }
         if let captureGlobalMonitor { NSEvent.removeMonitor(captureGlobalMonitor); self.captureGlobalMonitor = nil }
-        capturePanel.orderOut(nil)
-        closingCapture = false
+        if motionEnabled && capturePanel.isVisible {
+            animateCaptureOpacity(to: 0, duration: 0.12, easeOut: false) { [weak self] in
+                guard let self else { return }
+                self.capturePanel.orderOut(nil)
+                self.closingCapture = false
+                if self.reopenCapture { self.reopenCapture = false; self.toggleCapture() }
+            }
+        } else {
+            capturePanel.orderOut(nil)
+            closingCapture = false
+            if reopenCapture { reopenCapture = false; toggleCapture() }
+        }
+    }
+
+    private func animateCaptureOpacity(to target: CGFloat, duration: TimeInterval, easeOut: Bool,
+                                       completion: @escaping @MainActor () -> Void) {
+        captureMotionTimer?.invalidate()
+        let initial = capturePanel.alphaValue
+        let started = ProcessInfo.processInfo.systemUptime
+        captureMotionTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                let progress = min(1, (ProcessInfo.processInfo.systemUptime - started) / duration)
+                let eased = easeOut ? 1 - pow(1 - progress, 3) : progress * progress
+                self.capturePanel.alphaValue = initial + (target - initial) * eased
+                if progress >= 1 {
+                    timer.invalidate()
+                    self.captureMotionTimer = nil
+                    completion()
+                }
+            }
+        }
     }
 
     @objc private func showSettings() {
@@ -388,6 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func pollEdge(pointer: NSPoint? = nil) {
+        guard !edgeTransitioning else { return }
         let pressing = NSEvent.pressedMouseButtons & 1 == 1
         if userDragging && !pressing {
             userDragging = false
@@ -424,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func hideAtEdge() {
+    private func hideAtEdge(animated: Bool = true) {
         guard !dockHidden, let resting = dockFrame, let edge = store.preferences.dockEdge else { return }
         let bounds = NSScreen.screens.first(where: { $0.visibleFrame.intersects(resting) })?.visibleFrame
             ?? NSScreen.main!.visibleFrame
@@ -432,33 +479,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         saveFrameWork?.cancel()
         dockFrame = mainPanel.frame
         dockHidden = true
+        edgeTransitioning = true
+        edgeMotionToken += 1
+        let token = edgeMotionToken
         // Keep the full-size backing store intact. Resizing the live hosting
         // window to 8px leaves stale content/shadows during compositing.
         let height = min(100, resting.height)
         edgePanel.setFrame(NSRect(x: edge == "left" ? bounds.minX : bounds.maxX - 8,
                                  y: resting.midY - height / 2, width: 8, height: height), display: true)
-        mainPanel.orderOut(nil)
-        edgePanel.orderFrontRegardless()
-        changingMode = false
-        updateOpacity()
+        let finish: @MainActor () -> Void = { [weak self] in
+            guard let self, self.edgeMotionToken == token, self.dockHidden else { return }
+            self.mainPanel.orderOut(nil)
+            self.mainPanel.setFrame(self.dockFrame ?? resting, display: false)
+            self.edgePanel.orderFrontRegardless()
+            self.edgeTransitioning = false
+            self.changingMode = false
+            self.updateOpacity()
+        }
+        guard animated && motionEnabled else { finish(); return }
+        var parked = mainPanel.frame
+        parked.origin.x = edge == "left" ? bounds.minX - parked.width + 8 : bounds.maxX - 8
+        animateEdge(toX: parked.minX, duration: 0.19, spring: false, completion: finish)
     }
 
-    private func revealFromEdge() {
+    private func revealFromEdge(animated: Bool = true) {
         guard dockHidden, let frame = dockFrame else { return }
         changingMode = true
         dockHidden = false
-        mainPanel.setFrame(onScreen(frame), display: true)
+        edgeTransitioning = true
+        edgeMotionToken += 1
+        let token = edgeMotionToken
+        let target = onScreen(frame)
+        let bounds = NSScreen.screens.first(where: { $0.visibleFrame.intersects(target) })?.visibleFrame
+            ?? NSScreen.main!.visibleFrame
+        var parked = target
+        let left = store.preferences.dockEdge == "left"
+        parked.origin.x = left ? bounds.minX - parked.width + 8 : bounds.maxX - 8
+        mainPanel.setFrame(animated && motionEnabled ? parked : target, display: true)
         mainPanel.contentView?.layoutSubtreeIfNeeded()
         mainPanel.contentView?.displayIfNeeded()
         mainPanel.alphaValue = store.preferences.activeOpacity
         mainPanel.orderFrontRegardless()
         mainPanel.invalidateShadow()
         edgePanel.orderOut(nil)
-        changingMode = false
-        updateOpacity()
+        let finish: @MainActor () -> Void = { [weak self] in
+            guard let self, self.edgeMotionToken == token, !self.dockHidden else { return }
+            self.mainPanel.setFrame(target, display: true)
+            self.edgeTransitioning = false
+            self.changingMode = false
+            self.updateOpacity()
+        }
+        guard animated && motionEnabled else { finish(); return }
+        animateEdge(toX: target.minX, duration: 0.30, spring: true, completion: finish)
     }
 
-    func applicationWillTerminate(_ notification: Notification) { dockTimer?.invalidate(); rememberFrame() }
+    private func animateEdge(toX target: CGFloat, duration: TimeInterval, spring: Bool,
+                             completion: @escaping @MainActor () -> Void) {
+        edgeMotionTimer?.invalidate()
+        let initial = mainPanel.frame.minX
+        let started = ProcessInfo.processInfo.systemUptime
+        edgeMotionTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                let progress = min(1, (ProcessInfo.processInfo.systemUptime - started) / duration)
+                let eased = spring ? 1 - exp(-9 * progress) * cos(8 * progress) :
+                    progress * progress * (3 - 2 * progress)
+                var frame = self.mainPanel.frame
+                frame.origin.x = initial + (target - initial) * eased
+                self.mainPanel.setFrame(frame, display: true)
+                if progress >= 1 {
+                    timer.invalidate()
+                    self.edgeMotionTimer = nil
+                    completion()
+                }
+            }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        dockTimer?.invalidate()
+        edgeMotionTimer?.invalidate()
+        captureMotionTimer?.invalidate()
+        rememberFrame()
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showInbox(); return true }
     @objc private func quit() { NSApp.terminate(nil) }
 
@@ -557,5 +660,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         cycle(3)
+    }
+
+    private func runMotionRegression() {
+        dockTimer?.invalidate()
+        let bounds = NSScreen.main!.visibleFrame
+        let frame = NSRect(x: bounds.maxX - 350, y: bounds.midY - 200, width: 350, height: 400)
+        changingMode = true
+        mainPanel.setFrame(frame, display: true)
+        changingMode = false
+        store.preferences.dockEdge = "right"
+        dockFrame = frame
+        hideAtEdge()
+        let movingOut = dockHidden && edgeTransitioning && mainPanel.isVisible && mainPanel.frame.size == frame.size
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+            let hidden = self.dockHidden && !self.edgeTransitioning && !self.mainPanel.isVisible &&
+                self.edgePanel.isVisible && self.mainPanel.frame.size == frame.size
+            self.revealFromEdge()
+            let movingIn = !self.dockHidden && self.edgeTransitioning && self.mainPanel.isVisible &&
+                self.mainPanel.frame.size == frame.size
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
+                let revealed = !self.dockHidden && !self.edgeTransitioning && self.mainPanel.isVisible &&
+                    !self.edgePanel.isVisible && self.mainPanel.frame == frame
+                self.toggleCapture()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                    let captureShown = self.capturePanel.isVisible && self.capturePanel.isKeyWindow &&
+                        abs(self.capturePanel.alphaValue - (self.store.preferences.captureOpacity ?? 0.95)) < 0.01
+                    self.closeCapture()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+                        let captureHidden = !self.capturePanel.isVisible && !self.closingCapture
+                        let passed = movingOut && hidden && movingIn && revealed && captureShown && captureHidden
+                        print("Motion regression: \(passed ? "PASS" : "FAIL") — out=\(movingOut), hidden=\(hidden), in=\(movingIn), revealed=\(revealed), capture=\(captureShown), closed=\(captureHidden)")
+                        fflush(stdout)
+                        exit(passed ? 0 : 1)
+                    }
+                }
+            }
+        }
     }
 }

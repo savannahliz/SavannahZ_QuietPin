@@ -314,9 +314,12 @@ struct ReplacementView: View {
 }
 
 struct QuickCaptureView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var store: Store
     let close: () -> Void
     var inputReady: (NSTextField) -> Void = { _ in }
+    @ViewState private var hovering = false
+    @ViewState private var presented = false
     var body: some View {
         HStack(spacing: 12) {
             HStack(spacing: 15) {
@@ -340,9 +343,30 @@ struct QuickCaptureView: View {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain).help("取消输入 · Esc").accessibilityLabel("取消输入")
+            .opacity(hovering ? 1 : 0)
+            .scaleEffect(hovering ? 1 : 0.72)
+            .allowsHitTesting(hovering)
         }
         .frame(height: 64)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if reduceMotion { hovering = inside }
+            else { withAnimation(.spring(response: 0.26, dampingFraction: 0.72)) { hovering = inside } }
+        }
+        .scaleEffect(presented ? 1 : 0.95)
+        .offset(y: presented ? 0 : 5)
+        .onAppear { presentCapture() }
+        .onChange(of: store.captureSession) { _ in presentCapture() }
         .preferredColorScheme(store.preferences.background.isDark ? .dark : .light)
+    }
+
+    private func presentCapture() {
+        if reduceMotion { presented = true; hovering = false; return }
+        presented = false
+        hovering = false
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.80)) { presented = true }
+        }
     }
 
     private func submit() {
