@@ -353,7 +353,7 @@ struct QuickCaptureView: View {
             if reduceMotion { hovering = inside }
             else { withAnimation(.spring(response: 0.30, dampingFraction: 0.60)) { hovering = inside } }
         }
-        .scaleEffect(x: presented ? 1 : 0.84, y: presented ? 1 : 0.96)
+        .scaleEffect(x: presented ? 1 : 0.90, y: presented ? 1 : 0.98)
         .onAppear { presentCapture() }
         .onChange(of: store.captureSession) { _ in presentCapture() }
         .preferredColorScheme(store.preferences.background.isDark ? .dark : .light)
@@ -364,7 +364,7 @@ struct QuickCaptureView: View {
         presented = false
         hovering = false
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.18, dampingFraction: 0.76)) { presented = true }
+            withAnimation(.spring(response: 0.12, dampingFraction: 0.85)) { presented = true }
         }
     }
 

@@ -311,10 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // This nonactivating panel borrows keyboard focus; activating the app
         // as well causes a visible foreground/Space transition before capture.
         let targetOpacity = min(1, max(0.15, store.preferences.captureOpacity ?? 0.95))
-        capturePanel.alphaValue = motionEnabled ? targetOpacity * 0.60 : targetOpacity
+        capturePanel.alphaValue = motionEnabled ? targetOpacity * 0.75 : targetOpacity
         capturePanel.makeKeyAndOrderFront(nil)
         if let captureInput { capturePanel.makeFirstResponder(captureInput) }
-        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.12, easeOut: true) {} }
+        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.09, easeOut: true) {} }
         captureLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self, self.capturePanel.isVisible else { return event }
             if event.type == .keyDown {
@@ -680,13 +680,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let movingIn = !self.dockHidden && self.edgeTransitioning && self.mainPanel.isVisible &&
                 self.mainPanel.frame.size == frame.size
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.00) {
+                let actual = self.mainPanel.frame
+                let frameRestored = abs(actual.minX - frame.minX) <= 1 && abs(actual.minY - frame.minY) <= 1 &&
+                    abs(actual.width - frame.width) <= 1 && abs(actual.height - frame.height) <= 1
                 let revealed = !self.dockHidden && !self.edgeTransitioning && self.mainPanel.isVisible &&
-                    !self.edgePanel.isVisible && self.mainPanel.frame == frame
+                    !self.edgePanel.isVisible && frameRestored
                 if !revealed {
                     print("reveal diagnostic: hidden=\(self.dockHidden), transitioning=\(self.edgeTransitioning), main=\(self.mainPanel.isVisible), edge=\(self.edgePanel.isVisible), frame=\(NSStringFromRect(self.mainPanel.frame)), expected=\(NSStringFromRect(frame))")
                 }
                 self.toggleCapture()
-                let startingOpacity = min(1, max(0.15, self.store.preferences.captureOpacity ?? 0.95)) * 0.60
+                let startingOpacity = min(1, max(0.15, self.store.preferences.captureOpacity ?? 0.95)) * 0.75
                 let fadedStart = self.capturePanel.isVisible && abs(self.capturePanel.alphaValue - startingOpacity) < 0.01
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                     let captureShown = self.capturePanel.isVisible && self.capturePanel.isKeyWindow &&

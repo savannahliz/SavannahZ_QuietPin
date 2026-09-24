@@ -23,8 +23,8 @@ QuietPin 提供 macOS 和 Windows 版本。记录保存在本机，不需要账�
 
 | 平台 | 下载文件 | 默认快速记录快捷键 |
 | --- | --- | --- |
-| macOS 13+，Apple Silicon / Intel | `QuietPin-1.0.0-macOS-universal.dmg` | Option + Space |
-| Windows 10/11 x64 | `QuietPin-1.0.0-Windows-x64.exe` | Ctrl + Alt + Space |
+| macOS 13+，Apple Silicon / Intel | `QuietPin-1.0.1-macOS-universal.dmg` | Option + Space |
+| Windows 10/11 x64 | `QuietPin-1.0.1-Windows-x64.exe` | Ctrl + Alt + Space |
 
 Mac：打开 DMG，将 QuietPin 拖进“应用程序”，双击启动。它显示在屏幕顶部菜单栏，不显示在 Dock。Windows：双击 EXE 即可运行，无需另装 .NET；可在系统托盘找到应用。
 
