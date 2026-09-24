@@ -311,10 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // This nonactivating panel borrows keyboard focus; activating the app
         // as well causes a visible foreground/Space transition before capture.
         let targetOpacity = min(1, max(0.15, store.preferences.captureOpacity ?? 0.95))
-        capturePanel.alphaValue = motionEnabled ? 0 : targetOpacity
+        capturePanel.alphaValue = motionEnabled ? targetOpacity * 0.35 : targetOpacity
         capturePanel.makeKeyAndOrderFront(nil)
         if let captureInput { capturePanel.makeFirstResponder(captureInput) }
-        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.08, easeOut: true) {} }
+        if motionEnabled { animateCaptureOpacity(to: targetOpacity, duration: 0.16, easeOut: true) {} }
         captureLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self, self.capturePanel.isVisible else { return event }
             if event.type == .keyDown {
@@ -679,18 +679,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.revealFromEdge()
             let movingIn = !self.dockHidden && self.edgeTransitioning && self.mainPanel.isVisible &&
                 self.mainPanel.frame.size == frame.size
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.60) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.00) {
                 let revealed = !self.dockHidden && !self.edgeTransitioning && self.mainPanel.isVisible &&
                     !self.edgePanel.isVisible && self.mainPanel.frame == frame
+                if !revealed {
+                    print("reveal diagnostic: hidden=\(self.dockHidden), transitioning=\(self.edgeTransitioning), main=\(self.mainPanel.isVisible), edge=\(self.edgePanel.isVisible), frame=\(NSStringFromRect(self.mainPanel.frame)), expected=\(NSStringFromRect(frame))")
+                }
                 self.toggleCapture()
+                let startingOpacity = min(1, max(0.15, self.store.preferences.captureOpacity ?? 0.95)) * 0.35
+                let fadedStart = self.capturePanel.isVisible && abs(self.capturePanel.alphaValue - startingOpacity) < 0.01
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                     let captureShown = self.capturePanel.isVisible && self.capturePanel.isKeyWindow &&
                         abs(self.capturePanel.alphaValue - (self.store.preferences.captureOpacity ?? 0.95)) < 0.01
+                    if !captureShown {
+                        print("capture diagnostic: visible=\(self.capturePanel.isVisible), key=\(self.capturePanel.isKeyWindow), alpha=\(self.capturePanel.alphaValue), closing=\(self.closingCapture)")
+                    }
                     self.closeCapture()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
                         let captureHidden = !self.capturePanel.isVisible && !self.closingCapture
-                        let passed = movingOut && hidden && movingIn && revealed && captureShown && captureHidden
-                        print("Motion regression: \(passed ? "PASS" : "FAIL") — out=\(movingOut), hidden=\(hidden), in=\(movingIn), revealed=\(revealed), capture=\(captureShown), closed=\(captureHidden)")
+                        let passed = movingOut && hidden && movingIn && revealed && fadedStart && captureShown && captureHidden
+                        print("Motion regression: \(passed ? "PASS" : "FAIL") — out=\(movingOut), hidden=\(hidden), in=\(movingIn), revealed=\(revealed), faded=\(fadedStart), capture=\(captureShown), closed=\(captureHidden)")
                         fflush(stdout)
                         exit(passed ? 0 : 1)
                     }
