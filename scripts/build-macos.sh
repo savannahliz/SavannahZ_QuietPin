@@ -24,5 +24,5 @@ stage="$(mktemp -d "${TMPDIR:-/tmp}/quietpin-dmg.XXXXXX")"
 ditto dist/QuietPin.app "$stage/QuietPin.app"
 ln -s /Applications "$stage/Applications"
 cp packaging/安装说明.txt "$stage/安装说明.txt"
-hdiutil create -volname QuietPin -srcfolder "$stage" -ov -format UDZO dist/QuietPin-1.0.1-macOS-universal.dmg
-printf 'Built: %s/dist/QuietPin.app\nBuilt: %s/dist/QuietPin-1.0.1-macOS-universal.dmg\n' "$PWD" "$PWD"
+hdiutil create -volname QuietPin -srcfolder "$stage" -ov -format UDZO dist/QuietPin-1.0.2-macOS-universal.dmg
+printf 'Built: %s/dist/QuietPin.app\nBuilt: %s/dist/QuietPin-1.0.2-macOS-universal.dmg\n' "$PWD" "$PWD"

@@ -819,6 +819,12 @@ internal sealed class SettingsWindow : Window
             Source = new BitmapImage(new Uri("pack://application:,,,/assets/GitHub_Invertocat_Black.png")),
             Width = 22, Height = 22, HorizontalAlignment = HorizontalAlignment.Center
         });
+        var githubLabel = UI.Text("GitHub 项目主页 ↗", 12);
+        githubLabel.Foreground = Brushes.RoyalBlue;
+        githubLabel.TextDecorations = TextDecorations.Underline;
+        githubLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        githubLabel.Margin = new Thickness(0, 5, 0, 0);
+        githubContent.Children.Add(githubLabel);
         var support = UI.Text("喜欢的话来点个⭐️支持作者吧，谢谢大家～", 11);
         support.HorizontalAlignment = HorizontalAlignment.Center;
         support.Margin = new Thickness(0, 5, 0, 0);

@@ -23,12 +23,12 @@ If QuietPin helps you, a ⭐️ on the [GitHub repository](https://github.com/sa
 
 ## Download and use
 
-Download installers from [Releases](https://github.com/savannahliz/SavannahZ_QuietPin/releases/tag/v1.0.1). The source-code archives are not runnable apps.
+Download installers from [Releases](https://github.com/savannahliz/SavannahZ_QuietPin/releases/tag/v1.0.2). The source-code archives are not runnable apps.
 
 | Platform | File | Default capture shortcut |
 | --- | --- | --- |
-| macOS 13+, Apple Silicon / Intel | `QuietPin-1.0.1-macOS-universal.dmg` | Option + Space |
-| Windows 10/11 x64 | `QuietPin-1.0.1-Windows-x64.exe` | Ctrl + Alt + Space |
+| macOS 13+, Apple Silicon / Intel | `QuietPin-1.0.2-macOS-universal.dmg` | Option + Space |
+| Windows 10/11 x64 | `QuietPin-1.0.2-Windows-x64.exe` | Ctrl + Alt + Space |
 
 On Mac, open the DMG, drag QuietPin into Applications, and launch it. The app lives in the menu bar, not the Dock. On Windows, run the EXE; no separate .NET installation is needed. The app is available from the system tray.
 

@@ -504,8 +504,14 @@ struct SettingsView: View {
             Section {
                 Link(destination: URL(string: "https://github.com/savannahliz/SavannahZ_QuietPin")!) {
                     VStack(spacing: 5) {
-                        Image(colorScheme == .dark ? "GitHub_Invertocat_White" : "GitHub_Invertocat_Black", bundle: .main)
-                            .resizable().scaledToFit().frame(width: 22, height: 22)
+                        if let url = Bundle.main.url(forResource: colorScheme == .dark ? "GitHub_Invertocat_White" : "GitHub_Invertocat_Black", withExtension: "png"),
+                           let icon = NSImage(contentsOf: url) {
+                            Image(nsImage: icon).resizable().scaledToFit().frame(width: 22, height: 22)
+                        } else {
+                            Image(systemName: "link").frame(width: 22, height: 22)
+                        }
+                        Text("GitHub 项目主页 ↗")
+                            .font(.caption).foregroundStyle(.blue).underline()
                         Text("喜欢的话来点个⭐️支持作者吧，谢谢大家～")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
